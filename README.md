@@ -17,6 +17,26 @@ host (labshim 10.74.0.1)
 
 This guide does **not** record test results. Run each phase and fill your own notes.
 
+## Quick start
+
+Sibling checkouts required next to this folder: `master-vehicle-simulator/`, `keystone/`, `pilot/`, `sim-apps/`. Autrio/EMQX (or your lab Autrio URL) must be reachable at `LAB_GATEWAY` (default `10.74.0.1`).
+
+```bash
+cd vehicle-lab
+cp lab.env.example lab.env
+# set KEYSTONE_BIRTH_SECRET (and KEYSTONE_AUTRIO_URL / KEYSTONE_TENANT_KEY if needed)
+
+sudo ./scripts/host-net.sh
+docker compose --env-file lab.env build simulator
+./scripts/build-car.sh
+docker compose --env-file lab.env up -d simulator
+
+./scripts/up-car.sh --vin SIMEV238923200001 --apps gai_EV
+# console: http://10.74.0.2:8090/ — add the same VIN + matching DBC
+```
+
+Details, networking, MQTT forward, and phase checks are below.
+
 ## Prerequisites
 
 - Linux host with Docker (Compose v2) and BuildKit
