@@ -1,0 +1,4 @@
+lab.env
+.git
+README.md
+# Keep car-entrypoint.sh in the build context (not ignored).

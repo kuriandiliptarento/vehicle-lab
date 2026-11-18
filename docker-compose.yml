@@ -1,0 +1,50 @@
+# Vehicle lab: multi-car simulator + car image for one-off VINs (up-car.sh).
+#
+# Prerequisites:
+#   cp lab.env.example lab.env   # fill KEYSTONE_BIRTH_SECRET
+#   sudo ./scripts/host-net.sh
+#
+# Build / run:
+#   docker compose --env-file lab.env build
+#   docker compose --env-file lab.env up -d simulator
+#   ./scripts/up-car.sh --vin <VIN> --apps gai_EV|gai_ICE|prod_EV|prod_ICE
+#
+# `car` is build-only (profile build). Runtime cars come from up-car.sh.
+# labnet is created by scripts/host-net.sh (external).
+
+name: vehicle-lab
+
+services:
+  simulator:
+    build:
+      context: ../master-vehicle-simulator
+      dockerfile: Dockerfile
+    image: vehicle-lab-simulator:local
+    container_name: vehicle-lab-simulator
+    restart: unless-stopped
+    init: true
+    networks:
+      labnet:
+        ipv4_address: ${LAB_SIM_IP:-10.74.0.2}
+    volumes:
+      - sim-state:/app/run/state
+
+  # Image definition only — do not `up` this for a VIN; use ./scripts/up-car.sh
+  car:
+    profiles: ["build"]
+    build:
+      context: .
+      dockerfile: car.Dockerfile
+      additional_contexts:
+        keystone: ../keystone
+        pilot: ../pilot
+        sim-apps: ../sim-apps
+    image: vehicle-lab-car:local
+
+networks:
+  labnet:
+    external: true
+    name: ${LABNET_NAME:-labnet}
+
+volumes:
+  sim-state:
