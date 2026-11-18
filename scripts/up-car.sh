@@ -7,7 +7,7 @@
 #   ./scripts/up-car.sh --vin SIMICEP2389230001 --apps prod_ICE --ip 10.74.0.21
 #
 # Keystone secrets still come from lab.env. Rebuild the car image once before first use:
-#   docker compose --env-file lab.env build car
+#   ./scripts/build-car.sh
 #
 set -euo pipefail
 
@@ -121,7 +121,7 @@ fi
 
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
   echo "image $IMAGE not found — build first:" >&2
-  echo "  cd $LAB_DIR && docker compose --env-file lab.env build car" >&2
+  echo "  cd $LAB_DIR && ./scripts/build-car.sh" >&2
   exit 2
 fi
 

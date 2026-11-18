@@ -80,18 +80,28 @@ Without that NAT the console returns `Network is unreachable` for places search.
 
 ```bash
 docker compose --env-file lab.env build simulator
-docker compose --env-file lab.env build car         # image only; not a running VIN
+./scripts/build-car.sh                              # stages keystone/pilot, then builds car image
 docker compose --env-file lab.env up -d simulator
 ```
 
 `car` is build-only (`profiles: [build]`). Compose never starts it. Runtime cars come from `up-car.sh`.
+
+#### Staged Keystone / Pilot contexts
+
+Compose does not read `.dockerignore` from vehicle-lab for sibling contexts, and this lab does not require committing `.dockerignore` into the Keystone or Pilot repos. Instead:
+
+1. Exclude lists live in [`dockerignores/`](dockerignores/) (`keystone.excludes`, `pilot.excludes`).
+2. `./scripts/prepare-build-contexts.sh` (called by `build-car.sh`) rsyncs sibling `../keystone` and `../pilot` into gitignored `.build-contexts/`, applying those excludes.
+3. `docker-compose.yml` points `additional_contexts` at `.build-contexts/keystone` and `.build-contexts/pilot`.
+
+That staging tree is **one** filtered snapshot used to build the single `vehicle-lab-car:local` image — not per VIN. Multiple cars share that image; wipe `.build-contexts/` anytime and re-run `build-car.sh` before the next image rebuild.
 
 ### Cars (VIN + apps on the command line)
 
 Pass VIN and app family to `up-car.sh`. Keystone secrets still come from `lab.env`.
 
 ```bash
-docker compose --env-file lab.env build car   # once, when the image is missing or Dockerfile changed
+./scripts/build-car.sh   # once, when the image is missing or Dockerfile / Keystone / Pilot changed
 
 ./scripts/up-car.sh --vin SIMEV238923200001 --apps gai_EV
 ./scripts/up-car.sh --vin SIMICE23892320001 --apps gai_ICE --ip 10.74.0.20
@@ -323,6 +333,9 @@ systemctl is-enabled docker
 |---|---|
 | [docker-compose.yml](docker-compose.yml) | simulator + build-only `car` image |
 | [car.Dockerfile](car.Dockerfile) | Keystone binary + Pilot `.venv` + all four sim-apps families |
+| [dockerignores/](dockerignores/) | rsync excludes for staged Keystone/Pilot contexts |
+| [scripts/prepare-build-contexts.sh](scripts/prepare-build-contexts.sh) | rsync siblings → `.build-contexts/` |
+| [scripts/build-car.sh](scripts/build-car.sh) | prepare contexts + `compose build car` |
 | [scripts/up-car.sh](scripts/up-car.sh) | one container per VIN: `--vin` + `--apps` |
 | [car-entrypoint.sh](car-entrypoint.sh) | process supervisor |
 | [scripts/host-net.sh](scripts/host-net.sh) | `labbus` / shim / `labnet` |

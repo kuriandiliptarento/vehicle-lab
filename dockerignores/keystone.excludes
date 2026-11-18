@@ -1,0 +1,18 @@
+# rsync --exclude-from list for staged Keystone build context (vehicle-lab only).
+# Keep workspace member tests/verify/tools/fake_pilot (listed in Cargo.toml).
+target/
+.git/
+.cursor/
+.dockerignore
+docs/
+*.md
+.env
+deploy/scripts/lab-supervisor.local.env
+deploy/scripts/*.local.env
+tests/device/
+tests/verify/fixtures/
+tests/verify/journeys/
+tests/verify/*.py
+tests/verify/**/*.py
+tests/requirements-verify.txt
+tests/prep/

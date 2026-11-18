@@ -1,0 +1,11 @@
+# rsync --exclude-from list for staged Pilot build context (vehicle-lab only).
+.venv/
+.git/
+.dockerignore
+logs/
+data/
+tests/
+*.md
+.env
+.pytest_cache/
+__pycache__/

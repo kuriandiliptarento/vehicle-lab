@@ -5,7 +5,8 @@
 #   sudo ./scripts/host-net.sh
 #
 # Build / run:
-#   docker compose --env-file lab.env build
+#   docker compose --env-file lab.env build simulator
+#   ./scripts/build-car.sh          # stages keystone/pilot then builds car image
 #   docker compose --env-file lab.env up -d simulator
 #   ./scripts/up-car.sh --vin <VIN> --apps gai_EV|gai_ICE|prod_EV|prod_ICE
 #
@@ -35,9 +36,10 @@ services:
     build:
       context: .
       dockerfile: car.Dockerfile
+      # Filtered copies from ./scripts/prepare-build-contexts.sh (not the live checkouts).
       additional_contexts:
-        keystone: ../keystone
-        pilot: ../pilot
+        keystone: .build-contexts/keystone
+        pilot: .build-contexts/pilot
         sim-apps: ../sim-apps
     image: vehicle-lab-car:local
 

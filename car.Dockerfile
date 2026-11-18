@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1.6
 # Build with Compose additional_contexts for keystone, pilot, and sim-apps.
-#
-#   docker compose build car
+# Prefer: ./scripts/build-car.sh (stages filtered keystone/pilot under .build-contexts/).
 
 ############################
 # Keystone release binary
