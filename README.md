@@ -17,6 +17,61 @@ host (labshim 10.74.0.1)
 
 This guide does **not** record test results. Run each phase and fill your own notes.
 
+## Adding a car to a running lab
+
+Use this when someone has already set up the lab and the simulator is running, for example on the shared dev Mac. Skip `host-net.sh` / `mac-net.sh`, `docker compose build`, and `docker compose up`. You only start one car container and register its VIN in the console.
+
+**Before you start**
+
+- A device registered in Autrio for your tenant, with its **birth secret**, and a release bound for the DBC family you will run.
+- A 17-character VIN that no other car uses. Check both lab cars and anything native on the host:
+  ```bash
+  docker ps --filter name=vehicle-lab-car- --format '{{.Names}}\t{{.Status}}'
+  ```
+  Two Keystones on the same device will fight over it.
+- The lab is up and the car image exists:
+  ```bash
+  docker ps --filter name=vehicle-lab-simulator --format '{{.Names}}\t{{.Status}}'   # expect Up
+  docker network inspect labnet >/dev/null && echo labnet ok
+  docker image inspect vehicle-lab-car:local >/dev/null && echo image ok
+  ```
+  If the image is missing, run `./scripts/build-car.sh` once. Rebuilding does not touch running cars; they keep the old image until recreated.
+
+**Start the car**
+
+Pass your tenant on the command line. Do not edit the shared `lab.env` for your own tenant.
+
+```bash
+cd vehicle-lab
+./scripts/up-car.sh --vin <VIN> --apps gai_EV \
+  --tenant-key <your-tenant-key> --birth-secret "$SECRET"
+```
+
+`--apps` is `gai_EV`, `gai_ICE`, `prod_EV` or `prod_ICE` and must match the DBC you pick in the console. `lab.env` already sets the Autrio URL (`host.docker.internal:8002` on macOS, `10.74.0.1:8002` on Linux); pass `--autrio-url` only if yours differs. The script sets the app VINs inside the car, so the VINs in `sim-apps/*/config/app.json` do not matter here.
+
+**Check it joined**
+
+```bash
+docker exec vehicle-lab-car-<VIN> cat /tmp/status     # expect "autrio: joined" and "ipc: /tmp/keystone.sock (up)"
+docker logs -f vehicle-lab-car-<VIN>                  # expect "pull_commit items published" about once a second
+```
+
+**Register the VIN in the simulator**
+
+Open the console (Linux: `http://10.74.0.2:8090/`; macOS: `http://<mac-ip>:18090/`, or `http://localhost:18090/` on the Mac itself). Add the **same VIN** with the matching DBC. Then start a drive. A parked car sends only a subset of signals (about 14 for `gai_EV`); the full set (51 for `gai_EV`) appears once it drives.
+
+**Remove a car**
+
+```bash
+docker stop vehicle-lab-car-<VIN> && docker rm vehicle-lab-car-<VIN>
+# only if you want a fresh Keystone identity / app data next time:
+docker volume rm vehicle-lab-car-<VIN>-keystone vehicle-lab-car-<VIN>-pilot vehicle-lab-car-<VIN>-apps
+```
+
+Also remove the VIN in the console.
+
+**Do not** restart or `compose down` the simulator, or run `./scripts/mac-net.sh teardown` / recreate `labnet`, while other people's cars are attached. Do not reuse a birth secret across devices or tenants. The secret is visible via `docker inspect` on a shared host.
+
 ## Quick start
 
 Sibling checkouts required next to this folder: `master-vehicle-simulator/`, `keystone/`, `pilot/`, `sim-apps/`. Autrio/EMQX (or your lab Autrio URL) must be reachable at `LAB_GATEWAY` (default `10.74.0.1`).
