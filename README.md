@@ -21,28 +21,37 @@ This guide does **not** record test results. Run each phase and fill your own no
 
 Sibling checkouts required next to this folder: `master-vehicle-simulator/`, `keystone/`, `pilot/`, `sim-apps/`. Autrio/EMQX (or your lab Autrio URL) must be reachable at `LAB_GATEWAY` (default `10.74.0.1`).
 
-**Keystone env belongs in this repo’s `lab.env`**, not in `keystone/deploy/scripts/lab-supervisor.local.env` on the host. `up-car.sh` passes those values into the car container; the entrypoint writes the in-container supervisor env from them. Set at least:
+**Keystone identity** is passed into the car by `up-car.sh` (entrypoint writes in-container supervisor env). Do **not** rely on host `keystone/deploy/scripts/lab-supervisor.local.env`.
 
-| Variable | Purpose |
+| Source | What |
 |---|---|
-| `KEYSTONE_BIRTH_SECRET` | join / birth secret for the device (required) |
-| `KEYSTONE_AUTRIO_URL` | Autrio base URL reachable via labshim (e.g. `http://10.74.0.1:8002`) |
-| `KEYSTONE_TENANT_KEY` | tenant (e.g. `sample-org`) |
-| `KEYSTONE_KEYSTORE_BACKEND` | usually `file` in the lab |
+| `lab.env` | Shared lab defaults: `LAB_*`, and optional default `KEYSTONE_*` |
+| `up-car.sh` flags | Per car / tenant overrides (flags win over `lab.env`) |
 
-VIN is **not** in `lab.env` — pass it on `./scripts/up-car.sh --vin …`.
+| Flag / env | Purpose |
+|---|---|
+| `--vin` | VIN (required on CLI; not in `lab.env`) |
+| `--tenant-key` / `KEYSTONE_TENANT_KEY` | tenant (differs per org) |
+| `--birth-secret` / `KEYSTONE_BIRTH_SECRET` | device birth secret (per device/tenant) |
+| `--autrio-url` / `KEYSTONE_AUTRIO_URL` | Autrio URL via labshim (e.g. `http://10.74.0.1:8002`) |
+| `--keystore` / `KEYSTONE_KEYSTORE_BACKEND` | usually `file` in the lab |
 
 ```bash
 cd vehicle-lab
 cp lab.env.example lab.env
-# edit lab.env — fill KEYSTONE_* (see table above)
+# edit lab.env — at least LAB_* ; optional default KEYSTONE_* for your usual tenant
 
 sudo ./scripts/host-net.sh
 docker compose --env-file lab.env build simulator
 ./scripts/build-car.sh
 docker compose --env-file lab.env up -d simulator
 
+# defaults from lab.env:
 ./scripts/up-car.sh --vin SIMEV238923200001 --apps gai_EV
+
+# or override tenant/secret on the CLI (same pattern as --vin):
+./scripts/up-car.sh --vin SIMEV238923200001 --apps gai_EV \
+  --tenant-key other-org --birth-secret "$SECRET"
 # console: http://10.74.0.2:8090/ — add the same VIN + matching DBC
 ```
 
@@ -127,16 +136,17 @@ Compose does not read `.dockerignore` from vehicle-lab for sibling contexts, and
 
 That staging tree is **one** filtered snapshot used to build the single `vehicle-lab-car:local` image — not per VIN. Multiple cars share that image; wipe `.build-contexts/` anytime and re-run `build-car.sh` before the next image rebuild.
 
-### Cars (VIN + apps on the command line)
+### Cars (VIN + apps + optional tenant on the command line)
 
-Pass VIN and app family to `up-car.sh`. Keystone secrets still come from `lab.env`.
+Pass VIN and app family to `up-car.sh`. Keystone tenant/secret/Autrio URL default from `lab.env` and can be overridden per car with `--tenant-key`, `--birth-secret`, `--autrio-url` (different tenants need different secrets).
 
 ```bash
 ./scripts/build-car.sh   # once, when the image is missing or Dockerfile / Keystone / Pilot changed
 
 ./scripts/up-car.sh --vin SIMEV238923200001 --apps gai_EV
 ./scripts/up-car.sh --vin SIMICE23892320001 --apps gai_ICE --ip 10.74.0.20
-./scripts/up-car.sh --vin SIMEVP23892320001 --apps prod_EV
+./scripts/up-car.sh --vin SIMEVP23892320001 --apps prod_EV \
+  --tenant-key other-org --birth-secret "$SECRET"
 ./scripts/up-car.sh --vin SIMICEP2389230001 --apps prod_ICE --ip 10.74.0.21
 ```
 
