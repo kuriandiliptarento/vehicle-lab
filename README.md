@@ -66,7 +66,7 @@ Details, networking, MQTT forward, and phase checks are below.
 ```bash
 cd vehicle-lab
 cp lab.env.example lab.env
-# edit lab.env — set KEYSTONE_BIRTH_SECRET (and Autrio URL / tenant if needed)
+# edit lab.env — LAB_* required; KEYSTONE_* optional defaults (override per car on up-car.sh)
 ```
 
 ## Host network (once per boot unless `--install-boot`)
@@ -380,5 +380,5 @@ systemctl is-enabled docker
 | [scripts/up-car.sh](scripts/up-car.sh) | one container per VIN: `--vin` + `--apps` |
 | [car-entrypoint.sh](car-entrypoint.sh) | process supervisor |
 | [scripts/host-net.sh](scripts/host-net.sh) | `labbus` / shim / `labnet` |
-| [lab.env.example](lab.env.example) | addresses + Keystone identity template |
+| [lab.env.example](lab.env.example) | addresses + optional Keystone defaults (`up-car.sh` can override per tenant) |
 | [../master-vehicle-simulator/Dockerfile](../master-vehicle-simulator/Dockerfile) | fleet + console on `0.0.0.0:8090` |
