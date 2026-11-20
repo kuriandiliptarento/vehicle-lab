@@ -36,6 +36,8 @@ Sibling checkouts required next to this folder: `master-vehicle-simulator/`, `ke
 | `--autrio-url` / `KEYSTONE_AUTRIO_URL` | Autrio URL via labshim (e.g. `http://10.74.0.1:8002`) |
 | `--keystore` / `KEYSTONE_KEYSTORE_BACKEND` | usually `file` in the lab |
 
+### Linux
+
 ```bash
 cd vehicle-lab
 cp lab.env.example lab.env
@@ -55,18 +57,44 @@ docker compose --env-file lab.env up -d simulator
 # console: http://10.74.0.2:8090/ — add the same VIN + matching DBC
 ```
 
+### macOS (Docker Desktop)
+
+```bash
+cd vehicle-lab
+cp lab.env.mac.example lab.env
+# edit lab.env — KEYSTONE_* defaults for your tenant
+
+./scripts/mac-net.sh
+docker compose --env-file lab.env build simulator
+./scripts/build-car.sh
+docker compose -f docker-compose.yml -f docker-compose.mac.yml --env-file lab.env up -d simulator
+
+# defaults from lab.env:
+./scripts/up-car.sh --vin SIMEV238923200001 --apps gai_EV
+
+# or override tenant/secret on the CLI (same pattern as --vin):
+./scripts/up-car.sh --vin SIMEV238923200001 --apps gai_EV \
+  --tenant-key other-org --birth-secret "$SECRET"
+# console: http://localhost:18090/ (from another machine: http://<mac-ip>:18090/)
+```
+
+**Caveat:** `up-car.sh` passes `KEYSTONE_BIRTH_SECRET` as a `docker run -e` value, so `docker inspect` on a shared host can read it.
+
 Details, networking, MQTT forward, and phase checks are below.
 
 ## Prerequisites
 
-- Linux host with Docker (Compose v2) and BuildKit
+- Linux host with Docker (Compose v2) and BuildKit, **or macOS with Docker Desktop**
 - Sibling checkouts: `master-vehicle-simulator/`, `keystone/`, `pilot/`, `sim-apps/` next to this folder
-- Root for host networking (`labbus` / macvlan)
+- Root only for Linux host networking (`labbus` / macvlan); macOS uses `./scripts/mac-net.sh` without sudo
 
 ```bash
 cd vehicle-lab
+# Linux:
 cp lab.env.example lab.env
-# edit lab.env — LAB_* required; KEYSTONE_* optional defaults (override per car on up-car.sh)
+# macOS:
+# cp lab.env.mac.example lab.env
+# edit lab.env — LAB_* / KEYSTONE_* as needed (CLI can override tenant fields)
 ```
 
 ## Host network (once per boot unless `--install-boot`)
@@ -116,12 +144,44 @@ The simulator (and cars) stay **single-homed** on `labnet` so multicast keeps on
 
 Without that NAT the console returns `Network is unreachable` for places search. Re-run `sudo ./scripts/host-net.sh` after a reboot if places fail again (or use `--install-boot`).
 
+### macOS (Docker Desktop)
+
+On macOS, **do not** run `host-net.sh` (`ip` / bridges / macvlan / iptables are Linux-only). Instead:
+
+```bash
+./scripts/mac-net.sh
+```
+
+What differs from Linux:
+
+| Topic | macOS behavior |
+|---|---|
+| `labbus` / `labshim` / macvlan | **Not used** |
+| `labnet` | Docker **bridge** network (`10.74.0.0/24`), created by `mac-net.sh` |
+| Autrio / EMQX | Cars reach the Mac via `host.docker.internal` (`LAB_GATEWAY` / `KEYSTONE_AUTRIO_URL` in `lab.env.mac.example`) |
+| Internet egress | Docker Desktop’s NAT — no `host-net.sh` MASQUERADE |
+| Operator console | Published host port (default **18090** via `docker-compose.mac.yml`), not `http://10.74.0.2:8090/` |
+| IGMP snooping | Cannot be disabled on a Docker bridge — run **Phase 1** first to confirm VIN multicast works |
+
+Teardown: `./scripts/mac-net.sh teardown` (stop/rm attached containers first if needed).
+
 ## Build and run
+
+**Linux:**
 
 ```bash
 docker compose --env-file lab.env build simulator
 ./scripts/build-car.sh                              # stages keystone/pilot, then builds car image
 docker compose --env-file lab.env up -d simulator
+```
+
+**macOS:** same build steps; bring the simulator up with the mac override so the console is published:
+
+```bash
+docker compose --env-file lab.env build simulator
+./scripts/build-car.sh
+docker compose -f docker-compose.yml -f docker-compose.mac.yml --env-file lab.env up -d simulator
+# console: http://localhost:18090/
 ```
 
 `car` is build-only (`profiles: [build]`). Compose never starts it. Runtime cars come from `up-car.sh`.
@@ -216,10 +276,13 @@ docker exec vehicle-lab-car-SIMEV238923200001 ps aux
 
 ## Phase 1 — Networking foundation
 
-**Goal:** sibling macvlan endpoints exchange UDP multicast and unicast.
+**Goal:** sibling endpoints on `labnet` exchange UDP multicast and unicast.
 
 ```bash
+# Linux:
 sudo ./scripts/host-net.sh
+# macOS (Docker Desktop):
+# ./scripts/mac-net.sh
 
 # Two throwaway containers on labnet
 docker run -d --rm --name mcast-a --network labnet --ip 10.74.0.10 python:3.11-slim sleep 3600
@@ -278,7 +341,9 @@ Cleanup: `docker rm -f mcast-a mcast-b`
 
 ## Phase 2 — Host connectivity
 
-**Goal:** host reaches the simulator console through `labshim` (not an address on `labbus`).
+**Goal:** host reaches the simulator console.
+
+**Linux** — through `labshim` (not an address on `labbus`):
 
 ```bash
 docker compose --env-file lab.env up -d simulator
@@ -290,7 +355,17 @@ ip addr show labshim
 ip -4 addr show labbus || true
 ```
 
-**Pass when:** curl returns `200`; `labshim` has `10.74.0.1`; bridge has no IPv4.
+**Pass when (Linux):** curl returns `200`; `labshim` has `10.74.0.1`; bridge has no IPv4.
+
+**macOS** — through the published port (no `labshim` / `ip` checks):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mac.yml --env-file lab.env up -d simulator
+curl -sS -o /dev/null -w "%{http_code}\n" http://localhost:18090/
+# expect 200
+```
+
+**Pass when (macOS):** curl returns `200`.
 
 **Your result:** _(empty)_
 
@@ -302,7 +377,8 @@ ip -4 addr show labbus || true
 docker compose --env-file lab.env up -d simulator
 docker logs vehicle-lab-simulator | head
 python3 scripts/bus-id.py SIMEV238923200001 SIMEV238923200002
-# Open http://10.74.0.2:8090/ — add a car (DBC + VIN), confirm it appears
+# Open console — Linux: http://10.74.0.2:8090/ ; macOS: http://localhost:18090/
+# add a car (DBC + VIN), confirm it appears
 # Optional: from a throwaway container, join that VIN's group/port and sniff frames
 ```
 
@@ -355,6 +431,11 @@ python3 scripts/bus-id.py SIMEV238923200001 SIMICE23892320001
 docker restart vehicle-lab-car-SIMEV238923200001
 docker restart vehicle-lab-simulator
 # After restart: console still up; car roster restored from sim-state; car processes back
+```
+
+**Linux** — durable host-net + Docker across reboot:
+
+```bash
 systemctl is-enabled docker
 # Reboot host only after host-net is durable:
 #   sudo ./scripts/host-net.sh --install-boot
@@ -362,7 +443,9 @@ systemctl is-enabled docker
 # Then reboot and confirm labbus/labshim/labnet + containers return.
 ```
 
-**Pass when:** individual restarts recover; after reboot (with boot unit + docker enabled) containers and volumes persist.
+**macOS:** `--install-boot` / `--enable-docker` do **not** apply. The Docker bridge `labnet` persists across Docker Desktop restarts; containers use `restart: unless-stopped`. Re-run `./scripts/mac-net.sh` only if the network was removed.
+
+**Pass when:** individual restarts recover; after reboot (Linux with boot unit + docker enabled, or macOS with Docker Desktop back) containers and volumes persist.
 
 **Your result:** _(empty)_
 
@@ -373,12 +456,15 @@ systemctl is-enabled docker
 | Path | Role |
 |---|---|
 | [docker-compose.yml](docker-compose.yml) | simulator + build-only `car` image |
+| [docker-compose.mac.yml](docker-compose.mac.yml) | macOS override: publish console `${LAB_SIM_CONSOLE_PORT:-18090}:8090` |
 | [car.Dockerfile](car.Dockerfile) | Keystone binary + Pilot `.venv` + all four sim-apps families |
 | [dockerignores/](dockerignores/) | rsync excludes for staged Keystone/Pilot contexts |
 | [scripts/prepare-build-contexts.sh](scripts/prepare-build-contexts.sh) | rsync siblings → `.build-contexts/` |
 | [scripts/build-car.sh](scripts/build-car.sh) | prepare contexts + `compose build car` |
 | [scripts/up-car.sh](scripts/up-car.sh) | one container per VIN: `--vin` + `--apps` |
 | [car-entrypoint.sh](car-entrypoint.sh) | process supervisor |
-| [scripts/host-net.sh](scripts/host-net.sh) | `labbus` / shim / `labnet` |
-| [lab.env.example](lab.env.example) | addresses + optional Keystone defaults (`up-car.sh` can override per tenant) |
+| [scripts/host-net.sh](scripts/host-net.sh) | Linux: `labbus` / shim / macvlan `labnet` |
+| [scripts/mac-net.sh](scripts/mac-net.sh) | macOS: Docker bridge `labnet` (no sudo) |
+| [lab.env.example](lab.env.example) | Linux addresses + optional Keystone defaults |
+| [lab.env.mac.example](lab.env.mac.example) | macOS: `host.docker.internal` + console port 18090 |
 | [../master-vehicle-simulator/Dockerfile](../master-vehicle-simulator/Dockerfile) | fleet + console on `0.0.0.0:8090` |

@@ -1,0 +1,11 @@
+# macOS / Docker Desktop override — use with the base file, do not replace it:
+#   docker compose -f docker-compose.yml -f docker-compose.mac.yml --env-file lab.env up -d simulator
+#
+# Publishes the operator console on the host (default 18090) so it does not collide
+# with a native `python3 -m fleet run` on :8090. labnet itself stays external
+# (created by ./scripts/mac-net.sh as a Docker bridge).
+
+services:
+  simulator:
+    ports:
+      - "${LAB_SIM_CONSOLE_PORT:-18090}:8090"
