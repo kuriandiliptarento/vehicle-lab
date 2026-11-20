@@ -152,6 +152,8 @@ On macOS, **do not** run `host-net.sh` (`ip` / bridges / macvlan / iptables are 
 ./scripts/mac-net.sh
 ```
 
+`mac-net.sh` creates/verifies the Docker bridge `labnet`, then **disables IGMP snooping** on that bridge inside the Docker Desktop VM (one-shot privileged `alpine` with `--network host`, writing `/sys/class/net/<br>/bridge/multicast_snooping`). That setting **resets** when Docker Desktop restarts or `labnet` is recreated — re-run `./scripts/mac-net.sh` after either. `LAB_GATEWAY` stays `host.docker.internal` for MQTT socat; the bridge IPAM gateway is separate (`LAB_BRIDGE_GATEWAY`, default `10.74.0.1`).
+
 What differs from Linux:
 
 | Topic | macOS behavior |
@@ -161,9 +163,9 @@ What differs from Linux:
 | Autrio / EMQX | Cars reach the Mac via `host.docker.internal` (`LAB_GATEWAY` / `KEYSTONE_AUTRIO_URL` in `lab.env.mac.example`) |
 | Internet egress | Docker Desktop’s NAT — no `host-net.sh` MASQUERADE |
 | Operator console | Published host port (default **18090** via `docker-compose.mac.yml`), not `http://10.74.0.2:8090/` |
-| IGMP snooping | Cannot be disabled on a Docker bridge — run **Phase 1** first to confirm VIN multicast works |
+| IGMP snooping | Cleared on every `mac-net.sh` run inside the Desktop VM (re-run after Desktop restart) — still run **Phase 1** to confirm multicast |
 
-Teardown: `./scripts/mac-net.sh teardown` (stop/rm attached containers first if needed).
+Teardown: `./scripts/mac-net.sh teardown` (stop/rm attached containers first; script exits if any remain).
 
 ## Build and run
 
@@ -281,8 +283,12 @@ docker exec vehicle-lab-car-SIMEV238923200001 ps aux
 ```bash
 # Linux:
 sudo ./scripts/host-net.sh
-# macOS (Docker Desktop):
+# macOS (Docker Desktop) — run first; disables IGMP snooping on labnet's bridge:
 # ./scripts/mac-net.sh
+# optional snooping check (expect 0):
+#   br=br-$(docker network inspect labnet -f '{{.Id}}' | cut -c1-12)
+#   docker run --rm --network host -e BR=$br alpine:3.20 \
+#     sh -c 'cat /sys/class/net/$BR/bridge/multicast_snooping'
 
 # Two throwaway containers on labnet
 docker run -d --rm --name mcast-a --network labnet --ip 10.74.0.10 python:3.11-slim sleep 3600
@@ -443,7 +449,7 @@ systemctl is-enabled docker
 # Then reboot and confirm labbus/labshim/labnet + containers return.
 ```
 
-**macOS:** `--install-boot` / `--enable-docker` do **not** apply. The Docker bridge `labnet` persists across Docker Desktop restarts; containers use `restart: unless-stopped`. Re-run `./scripts/mac-net.sh` only if the network was removed.
+**macOS:** `--install-boot` / `--enable-docker` do **not** apply. The Docker bridge `labnet` persists across Docker Desktop restarts; containers use `restart: unless-stopped`. After a Docker Desktop restart, **re-run `./scripts/mac-net.sh`** before trusting multicast (IGMP snooping must be cleared again). Also re-run if `labnet` was removed/recreated.
 
 **Pass when:** individual restarts recover; after reboot (Linux with boot unit + docker enabled, or macOS with Docker Desktop back) containers and volumes persist.
 
@@ -464,7 +470,7 @@ systemctl is-enabled docker
 | [scripts/up-car.sh](scripts/up-car.sh) | one container per VIN: `--vin` + `--apps` |
 | [car-entrypoint.sh](car-entrypoint.sh) | process supervisor |
 | [scripts/host-net.sh](scripts/host-net.sh) | Linux: `labbus` / shim / macvlan `labnet` |
-| [scripts/mac-net.sh](scripts/mac-net.sh) | macOS: Docker bridge `labnet` (no sudo) |
+| [scripts/mac-net.sh](scripts/mac-net.sh) | macOS: Docker bridge `labnet` + IGMP snooping off (no sudo) |
 | [lab.env.example](lab.env.example) | Linux addresses + optional Keystone defaults |
 | [lab.env.mac.example](lab.env.mac.example) | macOS: `host.docker.internal` + console port 18090 |
 | [../master-vehicle-simulator/Dockerfile](../master-vehicle-simulator/Dockerfile) | fleet + console on `0.0.0.0:8090` |
