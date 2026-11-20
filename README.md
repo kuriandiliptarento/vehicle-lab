@@ -64,7 +64,7 @@ cd vehicle-lab
 cp lab.env.mac.example lab.env
 # edit lab.env — KEYSTONE_* defaults for your tenant
 
-./scripts/mac-net.sh
+./scripts/mac-net.sh   # re-run after every Docker Desktop restart or labnet recreate (resets IGMP snooping)
 docker compose --env-file lab.env build simulator
 ./scripts/build-car.sh
 docker compose -f docker-compose.yml -f docker-compose.mac.yml --env-file lab.env up -d simulator
@@ -77,6 +77,8 @@ docker compose -f docker-compose.yml -f docker-compose.mac.yml --env-file lab.en
   --tenant-key other-org --birth-secret "$SECRET"
 # console: http://localhost:18090/ (from another machine: http://<mac-ip>:18090/)
 ```
+
+**Re-run `./scripts/mac-net.sh` after every Docker Desktop restart, and whenever `labnet` is removed or recreated.** IGMP snooping on `labnet`'s bridge lives inside the Docker Desktop VM and turns back on after either. With it on, multicast group entries age out after about 260 s and cars can go quiet mid-run.
 
 **Caveat:** `up-car.sh` passes `KEYSTONE_BIRTH_SECRET` as a `docker run -e` value, so `docker inspect` on a shared host can read it.
 
