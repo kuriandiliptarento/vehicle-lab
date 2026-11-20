@@ -21,10 +21,21 @@ This guide does **not** record test results. Run each phase and fill your own no
 
 Sibling checkouts required next to this folder: `master-vehicle-simulator/`, `keystone/`, `pilot/`, `sim-apps/`. Autrio/EMQX (or your lab Autrio URL) must be reachable at `LAB_GATEWAY` (default `10.74.0.1`).
 
+**Keystone env belongs in this repo’s `lab.env`**, not in `keystone/deploy/scripts/lab-supervisor.local.env` on the host. `up-car.sh` passes those values into the car container; the entrypoint writes the in-container supervisor env from them. Set at least:
+
+| Variable | Purpose |
+|---|---|
+| `KEYSTONE_BIRTH_SECRET` | join / birth secret for the device (required) |
+| `KEYSTONE_AUTRIO_URL` | Autrio base URL reachable via labshim (e.g. `http://10.74.0.1:8002`) |
+| `KEYSTONE_TENANT_KEY` | tenant (e.g. `sample-org`) |
+| `KEYSTONE_KEYSTORE_BACKEND` | usually `file` in the lab |
+
+VIN is **not** in `lab.env` — pass it on `./scripts/up-car.sh --vin …`.
+
 ```bash
 cd vehicle-lab
 cp lab.env.example lab.env
-# set KEYSTONE_BIRTH_SECRET (and KEYSTONE_AUTRIO_URL / KEYSTONE_TENANT_KEY if needed)
+# edit lab.env — fill KEYSTONE_* (see table above)
 
 sudo ./scripts/host-net.sh
 docker compose --env-file lab.env build simulator
